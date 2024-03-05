@@ -6,6 +6,7 @@ using Microsoft.CodeAnalysis.Text;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -14,9 +15,10 @@ using System.Threading;
 public sealed class SourceGen : ISourceGenerator
 {
 	public const string EnumGenAttributeName = "EnumGen";
-	public const string EnumGenAttributeAttributeName = EnumGenAttributeName + "Attribute";
 	public const string NameAttributeName = "Name";
-	public const string NameAttributeAttributeName = NameAttributeName + "Attribute";
+	// TODO is there any way rather than this crap to detect our attribute reliably? I mean, they can always use a using statement to alias it and then we're screwed...
+	private static readonly HashSet<string> EnumGenAttributeNames = [EnumGenAttributeName, EnumGenAttributeName + "Attribute", "EnumSourceGenerator." + EnumGenAttributeName, "EnumSourceGenerator." + EnumGenAttributeName + "Attribute"];
+	private static readonly HashSet<string> NameAttributeNames = [NameAttributeName, NameAttributeName + "Attribute", "EnumSourceGenerator." + NameAttributeName, "EnumSourceGenerator." + NameAttributeName + "Attribute"];
 	public void Initialize(GeneratorInitializationContext context)
 	{
 		// Calling this method for our attributes allows us to access the constructor arguments by using symbols in the execute method below
@@ -49,26 +51,22 @@ public sealed class SourceGen : ISourceGenerator
 "\t\tpublic string Text { get; }\n" +
 "\t}\n" +
 "}\n", Encoding.UTF8)));
-		//#if DEBUG
-		//		if (!System.Diagnostics.Debugger.IsAttached) System.Diagnostics.Debugger.Launch();
-		//#endif
+//#if DEBUG
+//		if (!System.Diagnostics.Debugger.IsAttached) System.Diagnostics.Debugger.Launch();
+//#endif
 	}
 	public void Execute(GeneratorExecutionContext context)
 	{
 		CancellationToken ct = context.CancellationToken;
 
 		// TODO we need different attributes, one where you can decorate a static partial class and we generate methods on it for the specified enum, where the user does not control the enum in question. Should be the same names as the existing ones, but with "For" suffixed.
-		
+
 		// TODO we have to handle [Flags] as well...
-		
+
 		IEnumerable<EnumDeclarationSyntax> targetEnums = context.Compilation.SyntaxTrees
 			.SelectMany(x => x.GetRoot(ct).DescendantNodes())
 			.OfType<EnumDeclarationSyntax>()
-			.Where(x => x.AttributeLists.Any(al => al.Attributes.Any(a =>
-			{
-				string n = a.Name.ToString();
-				return n == EnumGenAttributeName || n == EnumGenAttributeAttributeName;
-			})));
+			.Where(x => x.AttributeLists.Any(al => al.Attributes.Any(a => EnumGenAttributeNames.Contains(a.Name.ToString()))));
 
 		foreach (var targetEnum in targetEnums)
 		{
@@ -83,6 +81,49 @@ public sealed class SourceGen : ISourceGenerator
 					"category", DiagnosticSeverity.Error, isEnabledByDefault: true), Location.Create(targetEnum.SyntaxTree, targetEnum.Span), enumName));
 				continue;
 			}
+			string? underlyingType = null;
+			Func<object, string>? underlyingTypeAsString = null;
+			if (symTargetEnum is INamedTypeSymbol ntsTargetEnum && ntsTargetEnum.EnumUnderlyingType != null)
+			{
+				underlyingType = ntsTargetEnum.EnumUnderlyingType.ToString();
+				switch (underlyingType)
+				{
+					case "sbyte":
+						underlyingTypeAsString = o => ((sbyte)o).ToString(CultureInfo.InvariantCulture);
+						break;
+					case "byte":
+						underlyingTypeAsString = o => ((byte)o).ToString(CultureInfo.InvariantCulture);
+						break;
+					case "short":
+						underlyingTypeAsString = o => ((short)o).ToString(CultureInfo.InvariantCulture);
+						break;
+					case "ushort":
+						underlyingTypeAsString = o => ((ushort)o).ToString(CultureInfo.InvariantCulture);
+						break;
+					case "int":
+						underlyingTypeAsString = o => ((int)o).ToString(CultureInfo.InvariantCulture);
+						break;
+					case "uint":
+						underlyingTypeAsString = o => ((uint)o).ToString(CultureInfo.InvariantCulture);
+						break;
+					case "long":
+						underlyingTypeAsString = o => ((long)o).ToString(CultureInfo.InvariantCulture);
+						break;
+					case "ulong":
+						underlyingTypeAsString = o => ((ulong)o).ToString(CultureInfo.InvariantCulture);
+						break;
+					default:
+						underlyingType = null;
+						break;
+				}
+			}
+			if (underlyingType == null || underlyingTypeAsString == null)
+			{
+				context.ReportDiagnostic(Diagnostic.Create(new DiagnosticDescriptor(id: "ESG0002", title: "Enum has invalid underlying type",
+					messageFormat: "Enum {0} has an invalid underlying type; must be one of sbyte, byte, short, ushort, int, uint, long, ulong.",
+					"category", DiagnosticSeverity.Error, isEnabledByDefault: true), Location.Create(targetEnum.SyntaxTree, targetEnum.Span), enumName));
+				continue;
+			}
 			if (symTargetEnum.ContainingNamespace == null)
 			{
 				context.ReportDiagnostic(Diagnostic.Create(new DiagnosticDescriptor(id: "ESG0001", title: "Enum missing namespace",
@@ -90,12 +131,13 @@ public sealed class SourceGen : ISourceGenerator
 					"category", DiagnosticSeverity.Error, isEnabledByDefault: true), Location.Create(targetEnum.SyntaxTree, targetEnum.Span), enumName));
 				continue;
 			}
+
 			string enumNamespace = symTargetEnum.ContainingNamespace.ToString();
 			StringComparison comparison = StringComparison.Ordinal;
 
 			{
 				AttributeData? attrib = symTargetEnum.GetAttributes()
-					.Where(x => x.AttributeClass != null && (x.AttributeClass.Name == EnumGenAttributeName || x.AttributeClass.Name == EnumGenAttributeAttributeName))
+					.Where(x => x.AttributeClass != null && NameAttributeNames.Contains(x.AttributeClass.Name))
 					.FirstOrDefault();
 
 				if (attrib != null)
@@ -126,16 +168,23 @@ public sealed class SourceGen : ISourceGenerator
 				.OfType<EnumMemberDeclarationSyntax>())
 			{
 				ISymbol? symEnumMember = smTargetEnum.GetDeclaredSymbol(enumMember);
-				if (symEnumMember == null)
+				if (symEnumMember == null || symEnumMember is not IFieldSymbol fsEnumMember)
 				{
 					context.ReportDiagnostic(Diagnostic.Create(new DiagnosticDescriptor(id: "ESG9999", title: "Failed to get symbol",
 						messageFormat: "Could not get symbol for enum member {0}.",
 						"category", DiagnosticSeverity.Error, isEnabledByDefault: true), Location.Create(enumMember.SyntaxTree, enumMember.Span), enumMember.Identifier.ToString()));
 					continue;
 				}
+				if (fsEnumMember.ConstantValue == null)
+				{
+					context.ReportDiagnostic(Diagnostic.Create(new DiagnosticDescriptor(id: "ESG0003", title: "Failed to get value",
+						messageFormat: "Could not get underlying value for enum member {0}.",
+						"category", DiagnosticSeverity.Error, isEnabledByDefault: true), Location.Create(enumMember.SyntaxTree, enumMember.Span), enumMember.Identifier.ToString()));
+					continue;
+				}
 				var attribs = symEnumMember.GetAttributes();
 				AttributeData? attrib = attribs
-					.Where(x => x.AttributeClass != null && (x.AttributeClass.Name == NameAttributeName || x.AttributeClass.Name == NameAttributeAttributeName))
+					.Where(x => x.AttributeClass != null && NameAttributeNames.Contains(x.AttributeClass.Name))
 					.FirstOrDefault();
 				string? customId = null;
 
@@ -153,20 +202,35 @@ public sealed class SourceGen : ISourceGenerator
 				}
 
 				string id = enumMember.Identifier.ToString();
-				enumData.Add(new EnumData(customId ?? id, id, customId == null));
+				string stringValue = underlyingTypeAsString(fsEnumMember.ConstantValue);
+				enumData.Add(new EnumData(customId ?? id, id, customId == null, stringValue));
 			}
-
-			StringBuilder sbExt_ToStr = new();
-			sbExt_ToStr.Append("\t\tpublic static string ToStr(this ");
-			sbExt_ToStr.Append(enumName);
-			sbExt_ToStr.Append(" v)\n");
-			sbExt_ToStr.Append("\t\t{\n");
-			sbExt_ToStr.Append("\t\t\tswitch (v)\n");
-			sbExt_ToStr.Append("\t\t\t{\n");
 
 			StringBuilder sbEnum = new("#nullable enable\nnamespace ");
 			sbEnum.Append(enumNamespace);
 			sbEnum.Append("\n{\n");
+
+			StringBuilder sbEnum_ToStr = new();
+			sbEnum_ToStr.Append("\t\t/// <summary>\n");
+			sbEnum_ToStr.Append("\t\t/// Returns a string representation of this enumeration value.\n");
+			sbEnum_ToStr.Append("\t\t/// </summary>\n");
+			sbEnum_ToStr.Append("\t\tpublic static string ToStr(this ");
+			sbEnum_ToStr.Append(enumName);
+			sbEnum_ToStr.Append(" v)\n");
+			sbEnum_ToStr.Append("\t\t{\n");
+			sbEnum_ToStr.Append("\t\t\tswitch (v)\n");
+			sbEnum_ToStr.Append("\t\t\t{\n");
+
+			StringBuilder sbEnum_IsDefined = new();
+			sbEnum_IsDefined.Append("\t\t/// <summary>\n");
+			sbEnum_IsDefined.Append("\t\t/// Returns true if this enumeration value is defined, false otherwise. Returns false if passing a combination of flags, and that combination of flags is not explicitly defined.\n");
+			sbEnum_IsDefined.Append("\t\t/// </summary>\n");
+			sbEnum_IsDefined.Append("\t\tpublic static bool IsDefined(this ");
+			sbEnum_IsDefined.Append(enumName);
+			sbEnum_IsDefined.Append(" v)\n");
+			sbEnum_IsDefined.Append("\t\t{\n");
+			sbEnum_IsDefined.Append("\t\t\tswitch (v)\n");
+			sbEnum_IsDefined.Append("\t\t\t{\n");
 
 			string enumClassName = "Enum" + enumName;
 			sbEnum.Append("\tpublic static partial class ");
@@ -203,6 +267,12 @@ public sealed class SourceGen : ISourceGenerator
 			sbEnum_NamesToValues.Append(")\n");
 			sbEnum_NamesToValues.Append("\t\t{\n");
 
+			StringBuilder sbEnum_UnderlyingValues = new("\t\tprivate static readonly ");
+			sbEnum_UnderlyingValues.Append(underlyingType);
+			sbEnum_UnderlyingValues.Append("[] underlyingValues = new ");
+			sbEnum_UnderlyingValues.Append(underlyingType);
+			sbEnum_UnderlyingValues.Append("[] { ");
+
 			StringBuilder sbEnum_Values = new("\t\tprivate static readonly ");
 			sbEnum_Values.Append(enumName);
 			sbEnum_Values.Append("[] values = new ");
@@ -216,42 +286,108 @@ public sealed class SourceGen : ISourceGenerator
 				string fullEnumName = enumDatum.UsesIdentifierAsName
 					? string.Concat("nameof(", enumName, ".", enumDatum.Identifier, ")")
 					: string.Concat("\"", enumDatum.Name, "\"");
-				sbExt_ToStr.Append("\t\t\t\tcase ").Append(enumName).Append('.').Append(enumDatum.Identifier);
-				sbExt_ToStr.Append(": return ").Append(fullEnumName).Append(";\n");
+				sbEnum_ToStr.Append("\t\t\t\tcase ").Append(enumName).Append('.').Append(enumDatum.Identifier);
+				sbEnum_ToStr.Append(": return ").Append(fullEnumName).Append(";\n");
+
+				sbEnum_IsDefined.Append("\t\t\t\tcase ").Append(enumName).Append('.').Append(enumDatum.Identifier).Append(":\n");
 
 				sbEnum_NamesToValues.Append("\t\t\t[").Append(fullEnumName).Append("] = ");
 				sbEnum_NamesToValues.Append(enumName).Append('.').Append(enumDatum.Identifier).Append(",\n");
 
 				sbEnum_Values.Append(enumName).Append('.').Append(enumDatum.Identifier).Append(", ");
+				sbEnum_UnderlyingValues.Append(enumDatum.ValueAsString).Append(", ");
 				sbEnum_Names.Append(fullEnumName).Append(", ");
 			}
 
 			sbEnum_Values.Append("};\n");
+			sbEnum_UnderlyingValues.Append("};\n");
 			sbEnum_Names.Append("};\n");
 			sbEnum_NamesToValues.Append("\t\t};\n");
-			sbExt_ToStr.Append("\t\t\t\tdefault: return string.Empty;\n");
-			sbExt_ToStr.Append("\t\t\t}\n");
-			sbExt_ToStr.Append("\t\t}\n");
+			sbEnum_ToStr.Append("\t\t\t\tdefault: return string.Empty;\n");
+			sbEnum_ToStr.Append("\t\t\t}\n");
+			sbEnum_ToStr.Append("\t\t}\n");
+
+			sbEnum_IsDefined.Append("\t\t\t\t\treturn true;\n");
+			sbEnum_IsDefined.Append("\t\t\t\tdefault: return false;\n");
+			sbEnum_IsDefined.Append("\t\t\t}\n");
+			sbEnum_IsDefined.Append("\t\t}\n");
 
 			sbEnum.Append(sbEnum_Values);
+			sbEnum.Append(sbEnum_UnderlyingValues);
 			sbEnum.Append(sbEnum_Names);
 			sbEnum.Append(sbEnum_NamesToValues);
-			sbEnum.Append(sbExt_ToStr);
+			sbEnum.Append(sbEnum_ToStr);
+			sbEnum.Append(sbEnum_IsDefined);
 
-			sbEnum.Append("\t\tpublic static bool TryParse(string value, out ");
+			sbEnum.Append("\t\t/// <summary>\n");
+			sbEnum.Append("\t\t/// Attempts to parse <paramref name=\"value\"/>, returning <see langword=\"true\"/> on success and <see langword=\"false\"/> on failure.\n");
+			sbEnum.Append("\t\t/// </summary>\n");
+			sbEnum.Append("\t\tpublic static bool TryParse(string? value, out ");
 			sbEnum.Append(enumName);
-			sbEnum.Append(" result) { return namesToValues.TryGetValue(value, out result); }\n");
+			sbEnum.Append(" result)\n");
+			sbEnum.Append("\t\t{\n");
+			sbEnum.Append("\t\t\tif (value != null)\n");
+			sbEnum.Append("\t\t\t{\n");
+			sbEnum.Append("\t\t\t\treturn namesToValues.TryGetValue(value, out result);\n");
+			sbEnum.Append("\t\t\t}\n");
+			sbEnum.Append("\t\t\telse\n");
+			sbEnum.Append("\t\t\t{\n");
+			sbEnum.Append("\t\t\t\tresult = default;\n");
+			sbEnum.Append("\t\t\t\treturn false;\n");
+			sbEnum.Append("\t\t\t}\n");
+			sbEnum.Append("\t\t}\n");
+
+			sbEnum.Append("\t\t/// <summary>\n");
+			sbEnum.Append("\t\t/// The underlying type.\n");
+			sbEnum.Append("\t\t/// </summary>\n");
+			sbEnum.Append("\t\tpublic static System.Type UnderlyingType => typeof(");
+			sbEnum.Append(underlyingType);
+			sbEnum.Append(");\n");
+
+			sbEnum.Append("\t\t/// <summary>\n");
+			sbEnum.Append("\t\t/// Returns all the names and values, as tuples.\n");
+			sbEnum.Append("\t\t/// </summary>\n");
 			sbEnum.Append("\t\tpublic static System.Collections.Generic.IEnumerable<(string Name, ").Append(enumName).Append(" Value)> GetNameValues()\n");
 			sbEnum.Append("\t\t{\n");
 			sbEnum.Append("\t\t\tSystem.Diagnostics.Debug.Assert(names.Length == values.Length);\n");
 			sbEnum.Append("\t\t\tfor(int i = 0; i < values.Length; ++i) { yield return (names[i], values[i]); }\n");
 			sbEnum.Append("\t\t}\n");
 
+			sbEnum.Append("\t\t/// <summary>\n");
+			sbEnum.Append("\t\t/// Returns all the names and underlying values, as tuples.\n");
+			sbEnum.Append("\t\t/// </summary>\n");
+			sbEnum.Append("\t\tpublic static System.Collections.Generic.IEnumerable<(string Name, ").Append(underlyingType).Append(" Value)> GetNameUnderlyingValues()\n");
+			sbEnum.Append("\t\t{\n");
+			sbEnum.Append("\t\t\tSystem.Diagnostics.Debug.Assert(names.Length == values.Length);\n");
+			sbEnum.Append("\t\t\tfor(int i = 0; i < values.Length; ++i) { yield return (names[i], (").Append(underlyingType).Append(")values[i]); }\n");
+			sbEnum.Append("\t\t}\n");
+
+			sbEnum.Append("\t\t/// <summary>\n");
+			sbEnum.Append("\t\t/// A <see cref=\"System.ReadOnlySpan{string}\"/> containing all names.\n");
+			sbEnum.Append("\t\t/// </summary>\n");
 			sbEnum.Append("\t\tpublic static System.ReadOnlySpan<string> NamesAsSpan => new System.ReadOnlySpan<string>(names);\n");
+			sbEnum.Append("\t\t/// <summary>\n");
+			sbEnum.Append("\t\t/// A <see cref=\"System.ReadOnlyMemory{string}\"/> containing all names.\n");
+			sbEnum.Append("\t\t/// </summary>\n");
 			sbEnum.Append("\t\tpublic static System.ReadOnlyMemory<string> NamesAsMemory => new System.ReadOnlyMemory<string>(names);\n");
 
+			sbEnum.Append("\t\t/// <summary>\n");
+			sbEnum.Append("\t\t/// A <see cref=\"System.ReadOnlySpan{").Append(enumName).Append("}\"/> containing all values.\n");
+			sbEnum.Append("\t\t/// </summary>\n");
 			sbEnum.Append("\t\tpublic static System.ReadOnlySpan<").Append(enumName).Append("> ValuesAsSpan => new System.ReadOnlySpan<").Append(enumName).Append(">(values);\n");
+			sbEnum.Append("\t\t/// <summary>\n");
+			sbEnum.Append("\t\t/// A <see cref=\"System.ReadOnlyMemory{").Append(enumName).Append("}\"/> containing all values.\n");
+			sbEnum.Append("\t\t/// </summary>\n");
 			sbEnum.Append("\t\tpublic static System.ReadOnlyMemory<").Append(enumName).Append("> ValuesAsMemory => new System.ReadOnlyMemory<").Append(enumName).Append(">(values);\n");
+
+			sbEnum.Append("\t\t/// <summary>\n");
+			sbEnum.Append("\t\t/// A <see cref=\"System.ReadOnlySpan{").Append(underlyingType).Append("}\"/> containing all underlying values.\n");
+			sbEnum.Append("\t\t/// </summary>\n");
+			sbEnum.Append("\t\tpublic static System.ReadOnlySpan<").Append(underlyingType).Append("> UnderlyingValuesAsSpan => new System.ReadOnlySpan<").Append(underlyingType).Append(">(underlyingValues);\n");
+			sbEnum.Append("\t\t/// <summary>\n");
+			sbEnum.Append("\t\t/// A <see cref=\"System.ReadOnlyMemory{").Append(underlyingType).Append("}\"/> containing all underlying values.\n");
+			sbEnum.Append("\t\t/// </summary>\n");
+			sbEnum.Append("\t\tpublic static System.ReadOnlyMemory<").Append(underlyingType).Append("> UnderlyingValuesAsMemory => new System.ReadOnlyMemory<").Append(underlyingType).Append(">(underlyingValues);\n");
 
 			sbEnum.Append("\t}\n");
 			sbEnum.Append("}\n");

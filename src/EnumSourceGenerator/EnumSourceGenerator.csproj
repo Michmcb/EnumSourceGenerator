@@ -15,7 +15,11 @@
 		<RepositoryUrl>https://github.com/Michmcb/EnumSourceGenerator</RepositoryUrl>
 		<RepositoryType>Github</RepositoryType>
 		<PackageTags>generator, codegen, codegenerator, enum, library</PackageTags>
-		<PackageReleaseNotes>- Initial Release</PackageReleaseNotes>
+		<PackageReleaseNotes>- All forms of [EnumGen] attribute work; fully-qualified, with and without Attribute on the end. Aliased forms don't work still.
+- Added IsDefined extension method
+- Added UnderlyingType property
+- Added UnderlyingValues properties
+- Added GetNameUnderlyingValues() method</PackageReleaseNotes>
 		<PackageIconUrl />
 		<Title>EnumSourceGenerator</Title>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
