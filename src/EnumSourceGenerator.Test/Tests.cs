@@ -1,6 +1,7 @@
 namespace EnumSourceGenerator.Test
 {
 	using System;
+
 	public static class Tests
 	{
 		[Fact]
@@ -12,7 +13,10 @@ namespace EnumSourceGenerator.Test
 			{
 				Assert.Equal(names[i], values[i].ToStr());
 			}
-			Assert.Equal("", ((TestEnum)49238).ToStr());
+			Assert.Equal(((TestEnum)0).ToString(), ((TestEnum)0).ToStr());
+
+			TestEnum x = TestEnum.One | TestEnum.Two;
+			Assert.Equal(x.ToString().Replace(", ", "|"), x.ToStr());
 		}
 		[Fact]
 		public static void TryParse()
@@ -33,6 +37,28 @@ namespace EnumSourceGenerator.Test
 
 			Assert.False(EnumTestEnum.TryParse(null, out var v3));
 			Assert.Equal(default, v3);
+		}
+		[Fact]
+		public static void HasFlag()
+		{
+			TestEnum f = TestEnum.One | TestEnum.Two;
+			Assert.Equal(f.Flag(TestEnum.One), (f & TestEnum.One) == TestEnum.One);
+		}
+		[Fact]
+		public static void Parse()
+		{
+			string[] names = Enum.GetNames<TestEnum>();
+			TestEnum[] values = Enum.GetValues<TestEnum>();
+			for (int i = 0; i < names.Length; i++)
+			{
+				Assert.Equal(values[i], EnumTestEnum.Parse(names[i]));
+			}
+
+			Assert.Throws<ArgumentException>(() => EnumTestEnum.Parse("kghdjfkdfg"));
+
+			Assert.Throws<ArgumentException>(() => EnumTestEnum.Parse(""));
+
+			Assert.Throws<ArgumentException>(() => EnumTestEnum.Parse(null));
 		}
 		[Fact]
 		public static void GetNames()

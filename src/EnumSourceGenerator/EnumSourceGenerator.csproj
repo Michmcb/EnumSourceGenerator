@@ -5,7 +5,7 @@
 		<LangVersion>latest</LangVersion>
 		<Nullable>enable</Nullable>
 		<EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
-		<Version>0.1</Version>
+		<Version>0.3</Version>
 		<Authors>Michael McBride</Authors>
 		<Company></Company>
 		<Product>EnumSourceGenerator</Product>
@@ -15,11 +15,11 @@
 		<RepositoryUrl>https://github.com/Michmcb/EnumSourceGenerator</RepositoryUrl>
 		<RepositoryType>Github</RepositoryType>
 		<PackageTags>generator, codegen, codegenerator, enum, library</PackageTags>
-		<PackageReleaseNotes>- All forms of [EnumGen] attribute work; fully-qualified, with and without Attribute on the end. Aliased forms don't work still.
-- Added IsDefined extension method
-- Added UnderlyingType property
-- Added UnderlyingValues properties
-- Added GetNameUnderlyingValues() method</PackageReleaseNotes>
+		<PackageReleaseNotes>- Parse method that simply calls TryParse, and throws if it fails
+- If the enum is decorated with [Flags] as well, then more methods are generated
+- The Flag() method works just like: (value &amp; flag) == flag
+- The ToStr() method takes into account multiple flags
+- The FlagsToStr() method is called by ToStr() in the case of an enum decorated with [Flags] that has multiple flags set</PackageReleaseNotes>
 		<PackageIconUrl />
 		<Title>EnumSourceGenerator</Title>
 		<PackageReadmeFile>README.md</PackageReadmeFile>

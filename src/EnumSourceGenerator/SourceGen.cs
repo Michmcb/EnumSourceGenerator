@@ -27,7 +27,7 @@ public sealed class SourceGen : ISourceGenerator
 "\tusing System;\n" +
 
 "\t/// <summary>\n" +
-"\t/// Decorating an enum with this attribute will cause ToStr() and TryParse() methods to be generated for it.\n" +
+"\t/// Decorating an enum with this attribute will cause various methods to be generated for it.\n" +
 "\t/// </summary>\n" +
 "\t[AttributeUsage(AttributeTargets.Enum)]\n" +
 "\tpublic sealed class " + EnumGenAttributeName + "Attribute : Attribute\n" +
@@ -51,17 +51,15 @@ public sealed class SourceGen : ISourceGenerator
 "\t\tpublic string Text { get; }\n" +
 "\t}\n" +
 "}\n", Encoding.UTF8)));
-//#if DEBUG
-//		if (!System.Diagnostics.Debugger.IsAttached) System.Diagnostics.Debugger.Launch();
-//#endif
+		//#if DEBUG
+		//		if (!System.Diagnostics.Debugger.IsAttached) System.Diagnostics.Debugger.Launch();
+		//#endif
 	}
 	public void Execute(GeneratorExecutionContext context)
 	{
 		CancellationToken ct = context.CancellationToken;
 
 		// TODO we need different attributes, one where you can decorate a static partial class and we generate methods on it for the specified enum, where the user does not control the enum in question. Should be the same names as the existing ones, but with "For" suffixed.
-
-		// TODO we have to handle [Flags] as well...
 
 		IEnumerable<EnumDeclarationSyntax> targetEnums = context.Compilation.SyntaxTrees
 			.SelectMany(x => x.GetRoot(ct).DescendantNodes())
@@ -81,6 +79,9 @@ public sealed class SourceGen : ISourceGenerator
 					"category", DiagnosticSeverity.Error, isEnabledByDefault: true), Location.Create(targetEnum.SyntaxTree, targetEnum.Span), enumName));
 				continue;
 			}
+
+			bool isFlags = symTargetEnum.GetAttributes().Any(x => x.ToString() == "System.FlagsAttribute");
+
 			string? underlyingType = null;
 			Func<object, string>? underlyingTypeAsString = null;
 			if (symTargetEnum is INamedTypeSymbol ntsTargetEnum && ntsTargetEnum.EnumUnderlyingType != null)
@@ -216,9 +217,9 @@ public sealed class SourceGen : ISourceGenerator
 			sbEnum_ToStr.Append("\t\t/// </summary>\n");
 			sbEnum_ToStr.Append("\t\tpublic static string ToStr(this ");
 			sbEnum_ToStr.Append(enumName);
-			sbEnum_ToStr.Append(" v)\n");
+			sbEnum_ToStr.Append(" value)\n");
 			sbEnum_ToStr.Append("\t\t{\n");
-			sbEnum_ToStr.Append("\t\t\tswitch (v)\n");
+			sbEnum_ToStr.Append("\t\t\tswitch (value)\n");
 			sbEnum_ToStr.Append("\t\t\t{\n");
 
 			StringBuilder sbEnum_IsDefined = new();
@@ -227,9 +228,9 @@ public sealed class SourceGen : ISourceGenerator
 			sbEnum_IsDefined.Append("\t\t/// </summary>\n");
 			sbEnum_IsDefined.Append("\t\tpublic static bool IsDefined(this ");
 			sbEnum_IsDefined.Append(enumName);
-			sbEnum_IsDefined.Append(" v)\n");
+			sbEnum_IsDefined.Append(" value)\n");
 			sbEnum_IsDefined.Append("\t\t{\n");
-			sbEnum_IsDefined.Append("\t\t\tswitch (v)\n");
+			sbEnum_IsDefined.Append("\t\t\tswitch (value)\n");
 			sbEnum_IsDefined.Append("\t\t\t{\n");
 
 			string enumClassName = "Enum" + enumName;
@@ -303,7 +304,15 @@ public sealed class SourceGen : ISourceGenerator
 			sbEnum_UnderlyingValues.Append("};\n");
 			sbEnum_Names.Append("};\n");
 			sbEnum_NamesToValues.Append("\t\t};\n");
-			sbEnum_ToStr.Append("\t\t\t\tdefault: return string.Empty;\n");
+
+			if (isFlags)
+			{
+				sbEnum_ToStr.Append("\t\t\t\tdefault: return FlagsToStr(value, \"|\");\n");
+			}
+			else
+			{
+				sbEnum_ToStr.Append("\t\t\t\tdefault: return string.Empty;\n");
+			}
 			sbEnum_ToStr.Append("\t\t\t}\n");
 			sbEnum_ToStr.Append("\t\t}\n");
 
@@ -336,6 +345,52 @@ public sealed class SourceGen : ISourceGenerator
 			sbEnum.Append("\t\t\t\treturn false;\n");
 			sbEnum.Append("\t\t\t}\n");
 			sbEnum.Append("\t\t}\n");
+
+			sbEnum.Append("\t\t/// <summary>\n");
+			sbEnum.Append("\t\t/// Attempts to parse <paramref name=\"value\"/>. Throws <see cref=\"System.ArgumentException\"/> on failure.\n");
+			sbEnum.Append("\t\t/// </summary>\n");
+			sbEnum.Append("\t\tpublic static ");
+			sbEnum.Append(enumName);
+			sbEnum.Append(" Parse(string? value)\n");
+			sbEnum.Append("\t\t{\n");
+			sbEnum.Append("\t\t\treturn TryParse(value, out var result) ? result : throw new System.ArgumentException(\"Unable to parse the provided value as \\\"");
+			sbEnum.Append(enumName);
+			sbEnum.Append("\\\". Value is: \" + value);\n");
+			sbEnum.Append("\t\t}\n");
+
+			if (isFlags)
+			{
+				// TODO we can optimize FlagsToStr better. If it's kept public we cannot make any assumptions but if it's make private, we can assume that it's not 0, and it's got >1 flag set.
+				sbEnum.Append("\t\t/// <summary>\n");
+				sbEnum.Append("\t\t/// Returns a string representing all set flags, delimited by |.\n");
+				sbEnum.Append("\t\t/// </summary>\n");
+				sbEnum.Append("\t\tpublic static string FlagsToStr(this ").Append(enumName).Append(" value, string delimiter)\n");
+				sbEnum.Append("\t\t{\n");
+				sbEnum.Append("\t\t\tif (value == default) return \"\";\n");
+				sbEnum.Append("\t\t\tSystem.Text.StringBuilder s = new System.Text.StringBuilder();\n");
+				sbEnum.Append("\t\t\tforeach (var f in EnumTestEnum.ValuesAsSpan)\n");
+				sbEnum.Append("\t\t\t{\n");
+				sbEnum.Append("\t\t\t\tif (f != 0 && (value & f) == f)\n");
+				sbEnum.Append("\t\t\t\t{\n");
+				sbEnum.Append("\t\t\t\t\ts.Append(f.ToStr()).Append(delimiter);\n");
+				sbEnum.Append("\t\t\t\t}\n");
+				sbEnum.Append("\t\t\t}\n");
+				sbEnum.Append("\t\t\ts.Length -= delimiter.Length;\n");
+				sbEnum.Append("\t\t\treturn s.ToString();\n");
+				sbEnum.Append("\t\t}\n");
+
+				sbEnum.Append("\t\t/// <summary>\n");
+				sbEnum.Append("\t\t/// Returns <see langword=\"true\"/> if <paramref name=\"flag\"/> is set. Otherwise, returns <see langword=\"false\"/>.\n");
+				sbEnum.Append("\t\t/// </summary>\n");
+				sbEnum.Append("\t\tpublic static bool Flag(this ");
+				sbEnum.Append(enumName);
+				sbEnum.Append(" value, ");
+				sbEnum.Append(enumName);
+				sbEnum.Append(" flag)\n");
+				sbEnum.Append("\t\t{\n");
+				sbEnum.Append("\t\t\treturn (value & flag) == flag;\n");
+				sbEnum.Append("\t\t}\n");
+			}
 
 			sbEnum.Append("\t\t/// <summary>\n");
 			sbEnum.Append("\t\t/// The underlying type.\n");
