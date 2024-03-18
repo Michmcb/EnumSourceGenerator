@@ -30,25 +30,26 @@ public sealed class SourceGen : ISourceGenerator
 "\t/// Decorating an enum with this attribute will cause various methods to be generated for it.\n" +
 "\t/// </summary>\n" +
 "\t[AttributeUsage(AttributeTargets.Enum)]\n" +
-"\tpublic sealed class " + EnumGenAttributeName + "Attribute : Attribute\n" +
+"\tinternal sealed class " + EnumGenAttributeName + "Attribute : Attribute\n" +
 "\t{\n" +
-"\t\tpublic EnumGenAttribute(StringComparison comparer = StringComparison.Ordinal)\n" +
+"\t\tinternal EnumGenAttribute(StringComparison comparer = StringComparison.Ordinal)\n" +
 "\t\t{\n" +
 "\t\t\tComparer = comparer;\n" +
 "\t\t}\n" +
-"\t\tpublic StringComparison Comparer { get; }\n" +
+"\t\tinternal StringComparison Comparer { get; }\n" +
 "\t}\n" +
+
 "\t/// <summary>\n" +
 "\t/// Decorating an enum member with this attribute will define its string representation.\n" +
 "\t/// </summary>\n" +
 "\t[AttributeUsage(AttributeTargets.Field)]\n" +
-"\tpublic sealed class " + NameAttributeName + "Attribute : Attribute\n" +
+"\tinternal sealed class " + NameAttributeName + "Attribute : Attribute\n" +
 "\t{\n" +
-"\t\tpublic NameAttribute(string text)\n" +
+"\t\tinternal NameAttribute(string text)\n" +
 "\t\t{\n" +
 "\t\t\tText = text;\n" +
 "\t\t}\n" +
-"\t\tpublic string Text { get; }\n" +
+"\t\tinternal string Text { get; }\n" +
 "\t}\n" +
 "}\n", Encoding.UTF8)));
 		//#if DEBUG
@@ -76,7 +77,7 @@ public sealed class SourceGen : ISourceGenerator
 			{
 				context.ReportDiagnostic(Diagnostic.Create(new DiagnosticDescriptor(id: "ESG9999", title: "Failed to get symbol",
 					messageFormat: "Could not get symbol for enum member {0}.",
-					"category", DiagnosticSeverity.Error, isEnabledByDefault: true), Location.Create(targetEnum.SyntaxTree, targetEnum.Span), enumName));
+					"InternalError", DiagnosticSeverity.Error, isEnabledByDefault: true), Location.Create(targetEnum.SyntaxTree, targetEnum.Span), enumName));
 				continue;
 			}
 
@@ -122,14 +123,14 @@ public sealed class SourceGen : ISourceGenerator
 			{
 				context.ReportDiagnostic(Diagnostic.Create(new DiagnosticDescriptor(id: "ESG0002", title: "Enum has invalid underlying type",
 					messageFormat: "Enum {0} has an invalid underlying type; must be one of sbyte, byte, short, ushort, int, uint, long, ulong.",
-					"category", DiagnosticSeverity.Error, isEnabledByDefault: true), Location.Create(targetEnum.SyntaxTree, targetEnum.Span), enumName));
+					"Usage", DiagnosticSeverity.Error, isEnabledByDefault: true), Location.Create(targetEnum.SyntaxTree, targetEnum.Span), enumName));
 				continue;
 			}
 			if (symTargetEnum.ContainingNamespace == null)
 			{
 				context.ReportDiagnostic(Diagnostic.Create(new DiagnosticDescriptor(id: "ESG0001", title: "Enum missing namespace",
 					messageFormat: "Enum {0} must be declared in a namespace.",
-					"category", DiagnosticSeverity.Error, isEnabledByDefault: true), Location.Create(targetEnum.SyntaxTree, targetEnum.Span), enumName));
+					"Usage", DiagnosticSeverity.Error, isEnabledByDefault: true), Location.Create(targetEnum.SyntaxTree, targetEnum.Span), enumName));
 				continue;
 			}
 
@@ -173,14 +174,14 @@ public sealed class SourceGen : ISourceGenerator
 				{
 					context.ReportDiagnostic(Diagnostic.Create(new DiagnosticDescriptor(id: "ESG9999", title: "Failed to get symbol",
 						messageFormat: "Could not get symbol for enum member {0}.",
-						"category", DiagnosticSeverity.Error, isEnabledByDefault: true), Location.Create(enumMember.SyntaxTree, enumMember.Span), enumMember.Identifier.ToString()));
+						"InternalError", DiagnosticSeverity.Error, isEnabledByDefault: true), Location.Create(enumMember.SyntaxTree, enumMember.Span), enumMember.Identifier.ToString()));
 					continue;
 				}
 				if (fsEnumMember.ConstantValue == null)
 				{
 					context.ReportDiagnostic(Diagnostic.Create(new DiagnosticDescriptor(id: "ESG0003", title: "Failed to get value",
 						messageFormat: "Could not get underlying value for enum member {0}.",
-						"category", DiagnosticSeverity.Error, isEnabledByDefault: true), Location.Create(enumMember.SyntaxTree, enumMember.Span), enumMember.Identifier.ToString()));
+						"InternalError", DiagnosticSeverity.Error, isEnabledByDefault: true), Location.Create(enumMember.SyntaxTree, enumMember.Span), enumMember.Identifier.ToString()));
 					continue;
 				}
 				var attribs = symEnumMember.GetAttributes();
@@ -192,7 +193,7 @@ public sealed class SourceGen : ISourceGenerator
 				if (attrib != null)
 				{
 					ImmutableArray<TypedConstant> attribArgs = attrib.ConstructorArguments;
-					if (attribArgs.Length == 1)
+					if (attribArgs.Length > 0)
 					{
 						object? o = attribArgs[0].Value;
 						if (!(o is null) && o is string str)

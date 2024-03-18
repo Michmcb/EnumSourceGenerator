@@ -5,7 +5,7 @@
 		<LangVersion>latest</LangVersion>
 		<Nullable>enable</Nullable>
 		<EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
-		<Version>0.3</Version>
+		<Version>0.4</Version>
 		<Authors>Michael McBride</Authors>
 		<Company></Company>
 		<Product>EnumSourceGenerator</Product>
@@ -15,11 +15,7 @@
 		<RepositoryUrl>https://github.com/Michmcb/EnumSourceGenerator</RepositoryUrl>
 		<RepositoryType>Github</RepositoryType>
 		<PackageTags>generator, codegen, codegenerator, enum, library</PackageTags>
-		<PackageReleaseNotes>- Parse method that simply calls TryParse, and throws if it fails
-- If the enum is decorated with [Flags] as well, then more methods are generated
-- The Flag() method works just like: (value &amp; flag) == flag
-- The ToStr() method takes into account multiple flags
-- The FlagsToStr() method is called by ToStr() in the case of an enum decorated with [Flags] that has multiple flags set</PackageReleaseNotes>
+		<PackageReleaseNotes>- Made generated attributes internal, which fixes spurious warnings when used across projects with transitive dependencies due to conflicting types</PackageReleaseNotes>
 		<PackageIconUrl />
 		<Title>EnumSourceGenerator</Title>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
