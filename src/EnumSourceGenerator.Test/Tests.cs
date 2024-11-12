@@ -42,7 +42,7 @@ namespace EnumSourceGenerator.Test
 		public static void HasFlag()
 		{
 			TestEnum f = TestEnum.One | TestEnum.Two;
-			Assert.Equal(f.Flag(TestEnum.One), (f & TestEnum.One) == TestEnum.One);
+			Assert.Equal(f.HasFlag(TestEnum.One), (f & TestEnum.One) == TestEnum.One);
 		}
 		[Fact]
 		public static void Parse()
