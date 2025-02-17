@@ -1,36 +1,29 @@
 ﻿namespace EnumSourceGenerator;
 
 using System;
-using System.Collections.Generic;
+using System.Linq;
+
 public readonly struct EqArr<T> : IEquatable<EqArr<T>> where T : IEquatable<T>
 {
-	public EqArr(T[] array, IEqualityComparer<T> cmp)
+	public EqArr(T[] array)
 	{
 		Array = array;
-		this.cmp = cmp;
 	}
 	public readonly T[] Array;
-	public readonly IEqualityComparer<T> cmp;
 	public override bool Equals(object? obj)
 	{
 		return obj is EqArr<T> arr && Equals(arr);
 	}
 	public bool Equals(EqArr<T> other)
 	{
-		if (Array.Length != other.Array.Length) return false;
-		for (int i = 0; i < Array.Length; i++)
-		{
-			// Use this comparer, not the other's
-			if (cmp.Equals(Array[i], other.Array[i])) return false;
-		}
-		return true;
+		return Array.AsSpan().SequenceEqual(other.Array.AsSpan());
 	}
 	public override int GetHashCode()
 	{
 		int hashCode = -304334410;
 		for (int i = 0; i < Array.Length; i++)
 		{
-			hashCode *= -1521134295 + cmp.GetHashCode(Array[i]);
+			hashCode *= -1521134295 + Array[i].GetHashCode();
 		}
 		return hashCode;
 	}

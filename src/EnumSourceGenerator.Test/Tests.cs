@@ -51,7 +51,7 @@ namespace EnumSourceGenerator.Test
 			TestEnum[] values = Enum.GetValues<TestEnum>();
 			for (int i = 0; i < names.Length; i++)
 			{
-				Assert.Equal(values[i], EnumTestEnum.Parse(names[i]));
+				Assert.Equal(values[i], EnumTestEnum.Parse(names[i].ToLower()));
 			}
 
 			Assert.Throws<ArgumentException>(() => EnumTestEnum.Parse("kghdjfkdfg"));

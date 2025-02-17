@@ -2,7 +2,7 @@
 {
 	using System;
 
-	[EnumGen]
+	[EnumGen(StringComparison.OrdinalIgnoreCase)]
 	[Flags]
 	public enum TestEnum : long
 	{

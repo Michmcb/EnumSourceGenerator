@@ -64,7 +64,6 @@ public sealed class SourceGen : IIncrementalGenerator
 	}
 	private EnumNode GetNodes(GeneratorAttributeSyntaxContext context, CancellationToken ct)
 	{
-		EnumNameValueEqualityComparer cmp = EnumNameValueEqualityComparer.Default;
 		bool isFlags = false;
 		if (context.TargetSymbol is INamedTypeSymbol nts)
 		{
@@ -155,7 +154,7 @@ public sealed class SourceGen : IIncrementalGenerator
 				{
 					Array.Resize(ref nvs, i);
 				}
-				return new EnumNode(context.TargetSymbol.ContainingNamespace?.ToString(), context.TargetSymbol.Name, isFlags, (EnumValueType)underlyingType, comparison, new(nvs, cmp));
+				return new EnumNode(context.TargetSymbol.ContainingNamespace?.ToString(), context.TargetSymbol.Name, isFlags, (EnumValueType)underlyingType, comparison, new(nvs));
 			}
 		}
 		return new EnumNode(context.TargetSymbol.ContainingNamespace?.ToString(), context.TargetSymbol.Name, isFlags, default, StringComparison.Ordinal, default);
